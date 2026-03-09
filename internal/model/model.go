@@ -52,10 +52,10 @@ type ResponseBalance struct {
 }
 
 type ResponseUserOrders struct {
-	Number     string          `json:"number"`
-	Status     string          `json:"status"`
-	Accrual    decimal.Decimal `json:"accrual,omitempty"`
-	UploadedAt time.Time       `json:"uploaded_at"`
+	Number     string           `json:"number"`
+	Status     string           `json:"status"`
+	Accrual    *decimal.Decimal `json:"accrual,omitempty"`
+	UploadedAt time.Time        `json:"uploaded_at"`
 }
 
 type ErrorResponse struct {

@@ -3,22 +3,19 @@ package service
 import (
 	"context"
 	"crypto/hmac"
-	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
-	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/shopspring/decimal"
 	"github.com/zhedevops/gophermart/internal/model"
 	"github.com/zhedevops/gophermart/internal/repository"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var secretkey = []byte("supersecretkey")

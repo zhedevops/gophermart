@@ -18,10 +18,9 @@ import (
 func NewRouter(h *handler.Handler) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger, middleware.GzipHandle)
-	//r.Get("/api/user/withdrawals", h.WithdrawalsHandler)
+	r.Get("/api/user/withdrawals", h.WithdrawalsHandler)
 	r.Get("/api/user/balance", h.BalanceHandler)
 	r.Get("/api/user/orders", h.ListOrdersHandler)
-	//r.Get("/api/orders/{number}", h.OrderInfoHandler)
 	r.With(middleware.RequireContentType("text/plain")).Post("/api/user/orders", h.OrdersHandler)
 	r.With(middleware.RequireContentType("application/json")).Post("/api/user/login", h.LoginHandler)
 	r.With(middleware.RequireContentType("application/json")).Post("/api/user/register", h.RegisterHandler)

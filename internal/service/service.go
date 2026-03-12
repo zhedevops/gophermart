@@ -9,10 +9,12 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/shopspring/decimal"
+	"github.com/zhedevops/gophermart/internal/config"
 	"github.com/zhedevops/gophermart/internal/model"
 	"github.com/zhedevops/gophermart/internal/repository"
 	"golang.org/x/crypto/bcrypt"
@@ -21,11 +23,27 @@ import (
 var secretkey = []byte("supersecretkey")
 
 type Service struct {
-	repo repository.Repository
+	repo   repository.Repository
+	cnf    *config.Config
+	tasks  chan model.OrderTask
+	client *http.Client
 }
 
-func NewService(r repository.Repository) *Service {
-	return &Service{repo: r}
+func NewService(r repository.Repository, cnf *config.Config) *Service {
+	tasks := make(chan model.OrderTask, 15)
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	srv := &Service{
+		repo:   r,
+		cnf:    cnf,
+		tasks:  tasks,
+		client: client,
+	}
+	for i := 0; i < 3; i++ {
+		go srv.worker(tasks)
+	}
+	return srv
 }
 
 func (srv *Service) SetOrder(user model.User, orderNumber string) error {
@@ -85,18 +103,18 @@ func (srv *Service) GetNewUser(login string, password string) (model.User, error
 }
 
 func (srv *Service) AuthentificateUser(login string, password string) (model.User, error) {
-	user := model.User{}
-	passHash, err := HashPassword(password)
+	u := model.User{
+		Login: login,
+	}
+	user, err := srv.repo.FindUser(u)
 	if err != nil {
 		return user, err
 	}
-	err = CheckPassword(passHash, login)
+	err = CheckPassword(user.PasswordHash, password)
 	if err != nil {
-		return user, err
+		return user, model.ErrInvalidCredentials
 	}
-	user.PasswordHash = passHash
-	user.Login = login
-	return srv.repo.FindUser(user)
+	return user, nil
 }
 
 func (srv *Service) CheckAuthCookie(cookieAuth *http.Cookie) (model.User, error) {
@@ -149,6 +167,90 @@ func (srv *Service) GetUserOrders(userID uint32) ([]*model.Order, error) {
 
 func (srv *Service) GetBalance(userID uint32) (*model.Account, error) {
 	return srv.repo.GetBalance(userID)
+}
+
+func (srv *Service) GetUserWithdrawals(userID uint32) ([]*model.Order, error) {
+	return srv.repo.GetWithdrawalsByUser(userID, model.OperationWithdrawal)
+}
+
+func (srv *Service) ProcessOrder(orderNumber string) {
+	srv.tasks <- model.OrderTask{
+		OrderNumber: orderNumber,
+		NextCheck:   time.Now(),
+	}
+}
+
+func (srv *Service) worker(tasks chan model.OrderTask) {
+	for task := range tasks {
+		if time.Now().Before(task.NextCheck) {
+			time.Sleep(time.Second)
+			tasks <- task
+			continue
+		}
+
+		wait := 5 * time.Second
+		resp, dur, err := srv.getAccrual(task.OrderNumber)
+		if err != nil {
+			if dur != 0 {
+				wait = dur
+			}
+			if errors.Is(err, model.ErrToManyRequests) || errors.Is(err, model.ErrOrderNotRegistered) {
+				task.NextCheck = time.Now().Add(wait)
+				tasks <- task
+			}
+			continue
+		}
+
+		if resp.Status == model.StatusAccrualProcessing || resp.Status == model.StatusAccrualRegistered {
+			task.NextCheck = time.Now().Add(wait)
+			tasks <- task
+			continue
+		}
+
+		srv.updateOrder(resp)
+	}
+}
+
+func (srv *Service) getAccrual(orderNumber string) (model.ResponseAccrualService, time.Duration, error) {
+	resp, err := srv.client.Get(srv.cnf.AccrualAddr.ServerAddress + "/api/orders/" + orderNumber)
+	if err != nil {
+		return model.ResponseAccrualService{}, 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 429 {
+		retryAfter := time.Second * 5
+		if ra := resp.Header.Get("Retry-After"); ra != "" {
+			if secs, err := strconv.Atoi(ra); err == nil {
+				retryAfter = time.Duration(secs) * time.Second
+			}
+		}
+		return model.ResponseAccrualService{}, retryAfter, model.ErrToManyRequests
+	}
+
+	if resp.StatusCode == 204 {
+		return model.ResponseAccrualService{}, 0, model.ErrOrderNotRegistered
+	}
+
+	var response model.ResponseAccrualService
+	decoder := json.NewDecoder(resp.Body)
+	if err = decoder.Decode(&response); err != nil {
+		return model.ResponseAccrualService{}, 0, err
+	}
+	return response, 0, nil
+}
+
+func (srv *Service) updateOrder(resp model.ResponseAccrualService) {
+	status := model.StatusInvalid
+	if resp.Status == model.StatusAccrualProcessed {
+		status = model.StatusProcessed
+	}
+	var order = &model.Order{
+		Number:  resp.Order,
+		Status:  status,
+		Accrual: resp.Accrual,
+	}
+	_ = srv.repo.UpdateOrder(order)
 }
 
 func HashPassword(password string) (string, error) {

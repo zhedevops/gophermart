@@ -101,5 +101,6 @@ func SetConfigByFlag() {
 	flag.Var(cfg.ServerAddr, "a", "server address host:port")
 	flag.Var(cfg.AccrualAddr, "r", "accrual system address protocol://host:port")
 	flag.StringVar(&cfg.DatabaseDsn, "d", "", "db dsn")
+	flag.StringVar(&cfg.LogLevel, "l", "info", "log level")
 	flag.Parse()
 }

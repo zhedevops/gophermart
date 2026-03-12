@@ -5,7 +5,6 @@ CREATE TABLE IF NOT EXISTS order_operations (
     id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     operation SMALLINT NOT NULL CHECK (operation IN (0,1)),
     summ NUMERIC(10,2) NOT NULL,
-    status SMALLINT NOT NULL CHECK (status IN (0,1,2,3)),
     order_id INT NOT NULL REFERENCES orders(id),
     processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

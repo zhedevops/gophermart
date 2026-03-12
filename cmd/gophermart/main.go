@@ -45,10 +45,10 @@ func run() error {
 		log.Println("database pool closed")
 		database.CloseDB(pool)
 	}
-	srv := service.NewService(st)
+	srv := service.NewService(st, cnf)
 	h := handler.NewHandler(srv, cnf)
 
-	if err := router.Serve(h); err != nil {
+	if err = router.Serve(h); err != nil {
 		return err
 	}
 

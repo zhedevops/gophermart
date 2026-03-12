@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"github.com/shopspring/decimal"
 	"github.com/zhedevops/gophermart/internal/config"
 	"github.com/zhedevops/gophermart/internal/model"
 	"github.com/zhedevops/gophermart/internal/service"
@@ -65,7 +64,7 @@ func (h *Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	user, err := h.service.AuthentificateUser(req.Login, req.Password)
 	if err != nil {
-		if errors.Is(err, model.ErrUserNotFound) {
+		if errors.Is(err, model.ErrUserNotFound) || errors.Is(err, model.ErrInvalidCredentials) {
 			writeJSONError(w, http.StatusUnauthorized, "invalid username/password", err.Error())
 			return
 		}
@@ -79,7 +78,11 @@ func (h *Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) OrdersHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := h.handleCookie(w, r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		if errors.Is(err, model.ErrUserNotAuthenticated) {
+			writeJSONError(w, http.StatusUnauthorized, "user not authenticated", err.Error())
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, "handleCookie_failure", err.Error())
 		return
 	}
 	body, err := io.ReadAll(r.Body)
@@ -107,6 +110,9 @@ func (h *Handler) OrdersHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	go func() {
+		h.service.ProcessOrder(order)
+	}()
 	w.WriteHeader(http.StatusAccepted)
 }
 
@@ -123,6 +129,7 @@ func (h *Handler) ListOrdersHandler(w http.ResponseWriter, r *http.Request) {
 	orders, err := h.service.GetUserOrders(user.ID)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "service_ListOrdersHandler_failure", err.Error())
+		return
 	}
 	if orders == nil {
 		w.WriteHeader(http.StatusNoContent)
@@ -130,10 +137,10 @@ func (h *Handler) ListOrdersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := []model.ResponseUserOrders{}
 	for _, o := range orders {
-		var accrual *decimal.Decimal
-
-		if !o.Accrual.IsZero() {
-			accrual = &o.Accrual
+		var accrual *float64
+		if o.Accrual != nil && !o.Accrual.IsZero() {
+			f := o.Accrual.InexactFloat64()
+			accrual = &f
 		}
 		resp = append(resp, model.ResponseUserOrders{
 			Number:     o.Number,
@@ -163,6 +170,7 @@ func (h *Handler) BalanceHandler(w http.ResponseWriter, r *http.Request) {
 	account, err := h.service.GetBalance(user.ID)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "service_BalanceHandler_failure", err.Error())
+		return
 	}
 	resp := model.ResponseBalance{
 		Current:   account.Deposit,
@@ -179,7 +187,11 @@ func (h *Handler) BalanceHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) BalanceWithdrawHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := h.handleCookie(w, r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		if errors.Is(err, model.ErrUserNotAuthenticated) {
+			writeJSONError(w, http.StatusUnauthorized, "user not authenticated", err.Error())
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, "handleCookie_failure", err.Error())
 		return
 	}
 	var req model.RequestWithdraw
@@ -205,6 +217,41 @@ func (h *Handler) BalanceWithdrawHandler(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusOK)
 }
 
+func (h *Handler) WithdrawalsHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := h.handleCookie(w, r)
+	if err != nil {
+		if errors.Is(err, model.ErrUserNotAuthenticated) {
+			writeJSONError(w, http.StatusUnauthorized, "user not authenticated", err.Error())
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, "handleCookie_failure", err.Error())
+		return
+	}
+	withdrawals, err := h.service.GetUserWithdrawals(user.ID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "service_BalanceWithdrawHandler_failure", err.Error())
+		return
+	}
+	if withdrawals == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	resp := []model.ResponseUserWithdrawals{}
+	for _, wd := range withdrawals {
+		resp = append(resp, model.ResponseUserWithdrawals{
+			Order:       wd.Number,
+			Sum:         wd.Withdraw.InexactFloat64(),
+			ProcessedAt: wd.UploadedAt,
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	encoder := json.NewEncoder(w)
+	if err := encoder.Encode(resp); err != nil {
+		log.Error().Err(err).Msg("error encoding response")
+	}
+}
+
 func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	err := h.service.Ping(ctx)
@@ -228,7 +275,7 @@ func (h *Handler) handleCookie(w http.ResponseWriter, r *http.Request) (model.Us
 	}
 	user, err = h.service.CheckAuthCookie(cookieAuth)
 	if err != nil {
-		return user, model.ErrUserNotAuthenticated //todo error
+		return user, err
 	}
 	return user, nil
 }

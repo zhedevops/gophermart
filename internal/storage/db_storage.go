@@ -90,8 +90,6 @@ func (dbs *DBStorage) GetBalance(userID uint32) (*model.Account, error) {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return acc, err
 	}
-	acc.Deposit = acc.Deposit
-	acc.Withdrawn = acc.Withdrawn
 	return acc, nil
 }
 

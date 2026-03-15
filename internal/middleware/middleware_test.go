@@ -18,7 +18,7 @@ func TestLogger(t *testing.T) {
 	var buf bytes.Buffer
 	log.Logger = zerolog.New(&buf)
 
-	fn := func(w http.ResponseWriter, r *http.Request) {
+	fn := func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = fmt.Fprintf(w, "pong")
 	}

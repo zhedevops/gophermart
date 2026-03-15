@@ -267,7 +267,7 @@ func (h *Handler) setErrorResponseOnConflict(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusConflict)
 }
 
-func (h *Handler) handleCookie(w http.ResponseWriter, r *http.Request) (model.User, error) {
+func (h *Handler) handleCookie(_ http.ResponseWriter, r *http.Request) (model.User, error) {
 	var user = model.User{}
 	cookieAuth, err := r.Cookie("Authorization")
 	if err != nil {

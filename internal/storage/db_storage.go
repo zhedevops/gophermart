@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rs/zerolog/log"
 	"github.com/shopspring/decimal"
 	"github.com/zhedevops/gophermart/internal/model"
 )
@@ -28,7 +29,11 @@ func withTx(ctx context.Context, db *pgxpool.Pool, fn func(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && err != pgx.ErrTxClosed {
+			log.Error().Err(err).Msgf("tx rollback failed: %v", err)
+		}
+	}()
 
 	if err := fn(ctx, tx); err != nil {
 		return err
@@ -150,7 +155,11 @@ func (dbs *DBStorage) CreateUser(user model.User) (model.User, error) {
 	if err != nil {
 		return user, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && err != pgx.ErrTxClosed {
+			log.Error().Err(err).Msgf("tx rollback failed: %v", err)
+		}
+	}()
 	sql := `INSERT INTO users (login, password_hash) VALUES ($1, $2) RETURNING id, created_at;`
 	err = tx.QueryRow(ctx, sql, user.Login, user.PasswordHash).Scan(&user.ID, &user.CreatedAt)
 	if err != nil {

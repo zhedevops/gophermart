@@ -27,6 +27,8 @@ type Service struct {
 	client *http.Client
 }
 
+var orderNumberRegex = regexp.MustCompile(`^\d+$`)
+
 func NewService(r repository.Repository, cnf *config.Config) *Service {
 	tasks := make(chan model.OrderTask, 15)
 	client := &http.Client{
@@ -45,7 +47,7 @@ func NewService(r repository.Repository, cnf *config.Config) *Service {
 }
 
 func (srv *Service) SetOrder(user model.User, orderNumber string) error {
-	if !regexp.MustCompile(`^\d+$`).MatchString(orderNumber) {
+	if !orderNumberRegex.MatchString(orderNumber) {
 		return model.ErrWrongOrderNumber
 	}
 	if !ValidLuhn(orderNumber) {
@@ -67,7 +69,7 @@ func (srv *Service) SetWithdraw(user model.User, req model.RequestWithdraw) erro
 	if !req.Sum.GreaterThan(decimal.Zero) {
 		return errors.New("sum must be greater than 0")
 	}
-	if !regexp.MustCompile(`^\d+$`).MatchString(req.Order) {
+	if !orderNumberRegex.MatchString(req.Order) {
 		return model.ErrWrongOrderNumber
 	}
 	if !ValidLuhn(req.Order) {
@@ -83,10 +85,6 @@ func (srv *Service) SetWithdraw(user model.User, req model.RequestWithdraw) erro
 		return err
 	}
 	return nil
-}
-
-func (srv *Service) Ping(ctx context.Context) error {
-	return srv.repo.Ping(ctx)
 }
 
 func (srv *Service) GetNewUser(login string, password string) (model.User, error) {
@@ -249,6 +247,10 @@ func (srv *Service) updateOrder(resp model.ResponseAccrualService) {
 		Accrual: resp.Accrual,
 	}
 	_ = srv.repo.UpdateOrder(order)
+}
+
+func (srv *Service) Ping(ctx context.Context) error {
+	return srv.repo.Ping(ctx)
 }
 
 func HashPassword(password string) (string, error) {

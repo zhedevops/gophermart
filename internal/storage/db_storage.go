@@ -21,64 +21,110 @@ func NewDBStorage(pool *pgxpool.Pool) *DBStorage {
 	}
 }
 
-func (dbs *DBStorage) SetOrder(order *model.Order) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
+func withTx(ctx context.Context, db *pgxpool.Pool, fn func(ctx context.Context, tx pgx.Tx) error) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	tx, err := dbs.db.Begin(ctx)
+	tx, err := db.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	sql := `INSERT INTO orders (number, status, user_id) 
+
+	if err := fn(ctx, tx); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (dbs *DBStorage) SetOrder(order *model.Order) error {
+	return withTx(context.Background(), dbs.db, func(ctx context.Context, tx pgx.Tx) error {
+		sql := `INSERT INTO orders (number, status, user_id) 
 			VALUES ($1, $2, $3) 
 			ON CONFLICT (number) 
 			    DO NOTHING
 			RETURNING id;`
-	err = tx.QueryRow(ctx, sql, order.Number, order.Status, order.UserID).Scan(&order.ID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		var userID uint32
-		err := dbs.db.QueryRow(ctx, `SELECT user_id FROM orders WHERE number = $1`, order.Number).Scan(&userID)
+		err := tx.QueryRow(ctx, sql, order.Number, order.Status, order.UserID).Scan(&order.ID)
 		if errors.Is(err, pgx.ErrNoRows) {
+			var userID uint32
+			err := dbs.db.QueryRow(ctx, `SELECT user_id FROM orders WHERE number = $1`, order.Number).Scan(&userID)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
+			if userID == order.UserID {
+				return model.ErrOrderAlreadyExists
+			}
+			return model.ErrConflict
+		}
+		if err != nil {
 			return err
 		}
-		if userID == order.UserID {
-			return model.ErrOrderAlreadyExists
-		}
-		return model.ErrConflict
-	}
-	if err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+		return nil
+	})
 }
 
 func (dbs *DBStorage) UpdateOrder(order *model.Order) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
-	defer cancel()
-	tx, err := dbs.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-	sql := `UPDATE orders SET status = $1 WHERE number = $2 RETURNING id, user_id`
-	err = tx.QueryRow(ctx, sql, order.Status, order.Number).Scan(&order.ID, &order.UserID)
-	if err != nil {
-		return err
-	}
-	if order.Accrual != nil && !order.Accrual.IsZero() {
-		sql = `INSERT INTO order_operations (operation, summ, order_id)	VALUES ($1, $2, $3);`
-		_, err = tx.Exec(ctx, sql, model.OperationAccrual, order.Accrual, order.ID)
+	return withTx(context.Background(), dbs.db, func(ctx context.Context, tx pgx.Tx) error {
+		sql := `UPDATE orders SET status = $1 WHERE number = $2 RETURNING id, user_id`
+		err := tx.QueryRow(ctx, sql, order.Status, order.Number).Scan(&order.ID, &order.UserID)
 		if err != nil {
 			return err
 		}
-		sql = `UPDATE accounts SET deposit = deposit + $1 WHERE user_id=$2`
-		_, err = tx.Exec(ctx, sql, order.Accrual, order.UserID)
-		if err != nil {
-			return err
+		if order.Accrual != nil && !order.Accrual.IsZero() {
+			sql = `INSERT INTO order_operations (operation, summ, order_id)	VALUES ($1, $2, $3);`
+			_, err = tx.Exec(ctx, sql, model.OperationAccrual, order.Accrual, order.ID)
+			if err != nil {
+				return err
+			}
+			sql = `UPDATE accounts SET deposit = deposit + $1 WHERE user_id=$2`
+			_, err = tx.Exec(ctx, sql, order.Accrual, order.UserID)
+			if err != nil {
+				return err
+			}
 		}
-	}
+		return nil
+	})
+}
 
-	return tx.Commit(ctx)
+func (dbs *DBStorage) SetWithdraw(order *model.Order) error {
+	return withTx(context.Background(), dbs.db, func(ctx context.Context, tx pgx.Tx) error {
+		sql := `SELECT id FROM orders WHERE user_id = $1 and number = $2`
+		err := tx.QueryRow(ctx, sql, order.UserID, order.Number).Scan(&order.ID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			sql = `INSERT INTO orders (number, status, user_id) 
+			VALUES ($1, $2, $3) 
+			ON CONFLICT (number) 
+			    DO NOTHING
+			RETURNING id;`
+			err = tx.QueryRow(ctx, sql, order.Number, model.StatusNew, order.UserID).Scan(&order.ID)
+			if err != nil {
+				return err
+			}
+		}
+		if err != nil {
+			return err
+		}
+		var deposit decimal.Decimal
+		sql = `SELECT deposit FROM accounts WHERE user_id = $1`
+		err = dbs.db.QueryRow(ctx, sql, order.UserID).Scan(&deposit)
+		if err != nil {
+			return err
+		}
+		if deposit.LessThan(order.Withdraw) {
+			return model.ErrInsufficientFunds
+		}
+		sql = `UPDATE accounts SET withdrawn = withdrawn + $1, deposit = deposit - $1 WHERE user_id=$2 AND deposit >= $1`
+		_, err = tx.Exec(ctx, sql, order.Withdraw, order.UserID)
+		if err != nil {
+			return err
+		}
+		sql = `INSERT INTO order_operations (operation, summ, order_id)	VALUES ($1, $2, $3);`
+		_, err = tx.Exec(ctx, sql, model.OperationWithdrawal, order.Withdraw, order.ID)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func (dbs *DBStorage) GetBalance(userID uint32) (*model.Account, error) {
@@ -91,52 +137,6 @@ func (dbs *DBStorage) GetBalance(userID uint32) (*model.Account, error) {
 		return acc, err
 	}
 	return acc, nil
-}
-
-func (dbs *DBStorage) SetWithdraw(order *model.Order) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
-	defer cancel()
-	tx, err := dbs.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-	sql := `SELECT id FROM orders WHERE user_id = $1 and number = $2`
-	err = tx.QueryRow(ctx, sql, order.UserID, order.Number).Scan(&order.ID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		sql = `INSERT INTO orders (number, status, user_id) 
-			VALUES ($1, $2, $3) 
-			ON CONFLICT (number) 
-			    DO NOTHING
-			RETURNING id;`
-		err = tx.QueryRow(ctx, sql, order.Number, model.StatusNew, order.UserID).Scan(&order.ID)
-		if err != nil {
-			return err
-		}
-	}
-	if err != nil {
-		return err
-	}
-	var deposit decimal.Decimal
-	sql = `SELECT deposit FROM accounts WHERE user_id = $1`
-	err = dbs.db.QueryRow(ctx, sql, order.UserID).Scan(&deposit)
-	if err != nil {
-		return err
-	}
-	if deposit.LessThan(order.Withdraw) {
-		return model.ErrInsufficientFunds
-	}
-	sql = `UPDATE accounts SET withdrawn = withdrawn + $1, deposit = deposit - $1 WHERE user_id=$2 AND deposit >= $1`
-	_, err = tx.Exec(ctx, sql, order.Withdraw, order.UserID)
-	if err != nil {
-		return err
-	}
-	sql = `INSERT INTO order_operations (operation, summ, order_id)	VALUES ($1, $2, $3);`
-	_, err = tx.Exec(ctx, sql, model.OperationWithdrawal, order.Withdraw, order.ID)
-	if err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
 }
 
 func (dbs *DBStorage) Ping(ctx context.Context) error {

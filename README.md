@@ -24,4 +24,4 @@ git fetch template && git checkout template/master .github
 
 Затем добавьте полученные изменения в свой репозиторий.
 
-[![Go Tests](https://github.com/zhedevops/gophermart/actions/workflows/gophermart.yml/badge.svg)](https://github.com/zhedevops/gophermart/actions/workflows/gophermart.yml)
+[![gophermart](https://github.com/zhedevops/gophermart/actions/workflows/gophermart.yml/badge.svg)](https://github.com/zhedevops/gophermart/actions/workflows/gophermart.yml)

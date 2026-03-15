@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	httpSwagger "github.com/swaggo/http-swagger"
 	"github.com/zhedevops/gophermart/internal/handler"
 	"github.com/zhedevops/gophermart/internal/middleware"
 )
@@ -25,6 +26,12 @@ func NewRouter(h *handler.Handler) *chi.Mux {
 	r.With(middleware.RequireContentType("application/json")).Post("/api/user/login", h.LoginHandler)
 	r.With(middleware.RequireContentType("application/json")).Post("/api/user/register", h.RegisterHandler)
 	r.With(middleware.RequireContentType("application/json")).Post("/api/user/balance/withdraw", h.BalanceWithdrawHandler)
+	r.Get("/swagger/swagger.yaml", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "./docs/swagger.yaml")
+	})
+	r.Get("/swagger/*", httpSwagger.Handler(
+		httpSwagger.URL("/swagger/swagger.yaml"),
+	))
 	return r
 }
 

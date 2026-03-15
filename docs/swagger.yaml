@@ -1,0 +1,216 @@
+openapi: 3.0.3
+info:
+  title: GopherMart API
+  version: 1.0.0
+  description: API для управления пользователями, заказами и балансом
+servers:
+  - url: http://localhost:8080
+
+paths:
+  /api/user/register:
+    post:
+      summary: Регистрация нового пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestUser'
+      responses:
+        '200':
+          description: Успешная регистрация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Неверный запрос
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Пользователь уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/user/login:
+    post:
+      summary: Аутентификация пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestUser'
+      responses:
+        '200':
+          description: Успешная аутентификация
+        '401':
+          description: Неверный логин/пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/user/orders:
+    post:
+      summary: Добавить новый заказ
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              type: string
+              example: "1234567890"
+      responses:
+        '202':
+          description: Заказ принят
+        '409':
+          description: Заказ уже существует
+        '422':
+          description: Неверный номер заказа
+    get:
+      summary: Получить список заказов пользователя
+      responses:
+        '200':
+          description: Список заказов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ResponseUserOrders'
+        '204':
+          description: Заказов нет
+
+  /api/user/balance:
+    get:
+      summary: Получить баланс пользователя
+      responses:
+        '200':
+          description: Баланс пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseBalance'
+
+  /api/user/balance/withdraw:
+    post:
+      summary: Снять средства с баланса
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestWithdraw'
+      responses:
+        '200':
+          description: Средства сняты
+        '402':
+          description: Недостаточно средств
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Неверный номер заказа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/user/withdrawals:
+    get:
+      summary: Список снятых средств
+      responses:
+        '200':
+          description: Список снятых средств
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ResponseUserWithdrawals'
+        '204':
+          description: Снятых средств нет
+
+components:
+  schemas:
+    RequestUser:
+      type: object
+      properties:
+        login:
+          type: string
+        password:
+          type: string
+      required:
+        - login
+        - password
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        login:
+          type: string
+
+    RequestWithdraw:
+      type: object
+      properties:
+        order:
+          type: string
+        sum:
+          type: number
+          format: float
+      required:
+        - order
+        - sum
+
+    ResponseBalance:
+      type: object
+      properties:
+        current:
+          type: number
+          format: float
+        withdrawn:
+          type: number
+          format: float
+
+    ResponseUserOrders:
+      type: object
+      properties:
+        number:
+          type: string
+        status:
+          type: string
+        accrual:
+          type: number
+          format: float
+          nullable: true
+        uploadedAt:
+          type: string
+          format: date-time
+
+    ResponseUserWithdrawals:
+      type: object
+      properties:
+        order:
+          type: string
+        sum:
+          type: number
+          format: float
+        processedAt:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string

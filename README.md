@@ -26,4 +26,4 @@ git fetch template && git checkout template/master .github
 
 [![gophermart](https://github.com/zhedevops/gophermart/actions/workflows/gophermart.yml/badge.svg)](https://github.com/zhedevops/gophermart/actions/workflows/gophermart.yml)
 
-[![codecov](https://codecov.io/gh/zhedevops/gophermart/branch/master/graph/badge.svg)](https://codecov.io/gh/zhedevops/gophermart)
+[![codecov](https://codecov.io/gh/zhedevops/gophermart/branch/dev/graph/badge.svg)](https://codecov.io/gh/zhedevops/gophermart)

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"log"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/caarlos0/env/v6"
@@ -31,6 +32,7 @@ type Config struct {
 	AccrualAddr *netAddress
 	LogLevel    string
 	DatabaseDsn string
+	Secret      []byte
 }
 
 var cfg = &Config{
@@ -95,6 +97,8 @@ func parseEnvParams() {
 	if params.DatabaseDsn != nil {
 		cfg.DatabaseDsn = *params.DatabaseDsn
 	}
+
+	cfg.Secret = []byte(os.Getenv("SECRET_KEY"))
 }
 
 func SetConfigByFlag() {

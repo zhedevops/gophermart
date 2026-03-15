@@ -20,8 +20,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var secretkey = []byte("supersecretkey")
-
 type Service struct {
 	repo   repository.Repository
 	cnf    *config.Config
@@ -132,7 +130,7 @@ func (srv *Service) CheckAuthCookie(cookieAuth *http.Cookie) (model.User, error)
 	if err != nil {
 		return user, errors.New("decode cookie value signature failed")
 	}
-	h := hmac.New(sha256.New, secretkey)
+	h := hmac.New(sha256.New, srv.cnf.Secret)
 	h.Write(jwtData)
 	sign := h.Sum(nil)
 	if !hmac.Equal(sign, signature) {
@@ -155,7 +153,7 @@ func (srv *Service) GetAuthCookie(user model.User) string {
 		Exp: time.Now().Add(time.Hour).Unix(),
 	}
 	userData, _ := json.Marshal(userJWT)
-	h := hmac.New(sha256.New, secretkey)
+	h := hmac.New(sha256.New, srv.cnf.Secret)
 	h.Write(userData)
 	sign := h.Sum(nil)
 	return base64.StdEncoding.EncodeToString(userData) + "." + base64.StdEncoding.EncodeToString(sign)

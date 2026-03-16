@@ -48,6 +48,9 @@ func TestRouter(t *testing.T) {
 
 		r.ServeHTTP(w, req)
 		resp := w.Result()
+		defer func() {
+			_ = resp.Body.Close()
+		}()
 
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 	})
@@ -60,6 +63,9 @@ func TestRouter(t *testing.T) {
 
 		r.ServeHTTP(w, req)
 		resp := w.Result()
+		defer func() {
+			_ = resp.Body.Close()
+		}()
 
 		assert.Equal(t, http.StatusAccepted, resp.StatusCode)
 	})
@@ -72,6 +78,9 @@ func TestRouter(t *testing.T) {
 
 		r.ServeHTTP(w, req)
 		resp := w.Result()
+		defer func() {
+			_ = resp.Body.Close()
+		}()
 
 		assert.Equal(t, http.StatusUnsupportedMediaType, resp.StatusCode)
 	})
@@ -82,6 +91,9 @@ func TestRouter(t *testing.T) {
 
 		r.ServeHTTP(w, req)
 		resp := w.Result()
+		defer func() {
+			_ = resp.Body.Close()
+		}()
 
 		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})

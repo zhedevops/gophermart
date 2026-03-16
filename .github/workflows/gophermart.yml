@@ -20,6 +20,7 @@ jobs:
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: praktikum
+          DATABASE_DSN: postgres://postgres:postgres@postgres:5432/praktikum?sslmode=disable
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
         options: >-
           --health-cmd pg_isready

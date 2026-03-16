@@ -20,7 +20,7 @@ func setupTestDB(t *testing.T) (*DBStorage, func(db *pgxpool.Pool)) {
 	_ = godotenv.Load("../../.env")
 	dsn, _ := os.LookupEnv("DATABASE_DSN")
 	if dsn == "" {
-		dsn = "postgres://postgres:postgres@localhost:5432/praktikum"
+		dsn = "postgres://postgres:postgres@postgres:5432/praktikum"
 	}
 
 	var pool *pgxpool.Pool

@@ -2,24 +2,27 @@ package storage
 
 import (
 	"context"
-	"os/exec"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/joho/godotenv"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/zhedevops/gophermart/internal/model"
 )
 
-func setupTestDB(t *testing.T) (*DBStorage, func()) {
+func setupTestDB(t *testing.T) (*DBStorage, func(db *pgxpool.Pool)) {
 	t.Helper()
 
-	cmd := exec.Command("/usr/bin/docker", "compose", "-f", "../../docker-compose.test.yml", "up", "-d")
-	require.NoError(t, cmd.Run(), "failed to start testdb")
+	_ = godotenv.Load("../../.env")
+	dsn, _ := os.LookupEnv("DATABASE_DSN")
+	if dsn == "" {
+		dsn = "postgres://postgres:postgres@localhost:5432/praktikum"
+	}
 
-	dsn := "postgres://test:test@localhost:5439/test"
 	var pool *pgxpool.Pool
 	var err error
 	for i := 0; i < 30; i++ {
@@ -44,16 +47,17 @@ func setupTestDB(t *testing.T) (*DBStorage, func()) {
 
 	repo := NewDBStorage(pool)
 
-	teardown := func() {
-		exec.Command("docker", "compose", "-f", "../../docker-compose.test.yml", "down").Run()
+	teardown := func(db *pgxpool.Pool) {
+		_, _ = db.Exec(context.Background(), `
+		TRUNCATE TABLE order_operations, orders, users, accounts RESTART IDENTITY CASCADE
+	`)
 	}
-
 	return repo, teardown
 }
 
 func TestSetOrderIntegration(t *testing.T) {
 	repo, teardown := setupTestDB(t)
-	defer teardown()
+	defer teardown(repo.db)
 
 	var userID uint32
 	err := repo.db.QueryRow(context.Background(),

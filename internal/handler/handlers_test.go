@@ -26,14 +26,14 @@ import (
 
 type mockHandler struct{}
 
-func (h *mockHandler) OrdersHandler(w http.ResponseWriter, r *http.Request) {
+func (h *mockHandler) OrdersHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
-	w.Write([]byte(`ok`))
+	_, _ = w.Write([]byte(`ok`))
 }
 
-func (h *mockHandler) BalanceHandler(w http.ResponseWriter, r *http.Request) {
+func (h *mockHandler) BalanceHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`balance`))
+	_, _ = w.Write([]byte(`balance`))
 }
 
 func TestRouter(t *testing.T) {

@@ -146,10 +146,6 @@ func (dbs *DBStorage) GetBalance(userID uint32) (*model.Account, error) {
 	return acc, nil
 }
 
-func (dbs *DBStorage) Ping(ctx context.Context) error {
-	return dbs.db.Ping(ctx)
-}
-
 func (dbs *DBStorage) CreateUser(user model.User) (model.User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), contextTimeout)
 	defer cancel()

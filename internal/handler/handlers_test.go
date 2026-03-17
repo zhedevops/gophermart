@@ -1,29 +1,23 @@
 package handler
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/golang/mock/gomock"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zhedevops/gophermart/internal/config"
-	"github.com/zhedevops/gophermart/internal/database"
 	"github.com/zhedevops/gophermart/internal/middleware"
 	"github.com/zhedevops/gophermart/internal/mocks"
 	"github.com/zhedevops/gophermart/internal/model"
 	"github.com/zhedevops/gophermart/internal/service"
-	"github.com/zhedevops/gophermart/internal/storage"
 )
 
 type mockHandler struct{}
@@ -98,54 +92,6 @@ func TestRouter(t *testing.T) {
 		}()
 
 		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
-	})
-}
-
-func TestHandler_PingHandler(t *testing.T) {
-	a := assert.New(t)
-	_ = godotenv.Load("../../.env")
-	dsn, _ := os.LookupEnv("DATABASE_DSN")
-	if dsn == "" {
-		dsn = "postgres://postgres:postgres@postgres:5432/praktikum"
-	}
-	cnf := config.GetConfig()
-	// Открываем пул
-	pool, err := database.ConnectDB(dsn)
-	a.Nil(err)
-	a.NotNil(pool)
-	a.IsType(&pgxpool.Pool{}, pool)
-	st := storage.NewDBStorage(pool)
-	srv := service.NewService(st, cnf)
-	h := &Handler{service: srv, Cfg: cnf}
-	r := chi.NewRouter()
-	r.HandleFunc("/ping", h.PingHandler)
-	t.Run("Pool opened. Ping ok", func(t *testing.T) {
-		request := httptest.NewRequest(http.MethodGet, "/ping", nil)
-		w := httptest.NewRecorder()
-		r.ServeHTTP(w, request)
-
-		res := w.Result()
-		assert.Equal(t, http.StatusOK, res.StatusCode)
-		defer func() {
-			_ = res.Body.Close()
-		}()
-	})
-	t.Run("Pool closed. Ping failure", func(t *testing.T) {
-		// Удаляем пул
-		database.CloseDB(pool)
-		ctx := context.Background()
-		err = pool.Ping(ctx)
-		a.NotNil(err)
-
-		request := httptest.NewRequest(http.MethodGet, "/ping", nil)
-		w := httptest.NewRecorder()
-		r.ServeHTTP(w, request)
-
-		res := w.Result()
-		assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
-		defer func() {
-			_ = res.Body.Close()
-		}()
 	})
 }
 

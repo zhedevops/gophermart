@@ -248,16 +248,6 @@ func (h *Handler) WithdrawalsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	err := h.service.Ping(ctx)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "service_Ping_failure", err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusOK)
-}
-
 func (h *Handler) setErrorResponseOnConflict(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusConflict)

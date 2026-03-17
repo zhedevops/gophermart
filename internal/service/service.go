@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
@@ -249,10 +248,6 @@ func (srv *Service) updateOrder(resp model.ResponseAccrualService) {
 		Accrual: resp.Accrual,
 	}
 	_ = srv.repo.UpdateOrder(order)
-}
-
-func (srv *Service) Ping(ctx context.Context) error {
-	return srv.repo.Ping(ctx)
 }
 
 func HashPassword(password string) (string, error) {

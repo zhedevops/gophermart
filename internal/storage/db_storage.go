@@ -140,7 +140,7 @@ func (dbs *DBStorage) GetBalance(userID uint32) (*model.Account, error) {
 	var acc = &model.Account{}
 	sql := `SELECT deposit, withdrawn FROM accounts WHERE user_id = $1 LIMIT 1`
 	err := dbs.db.QueryRow(ctx, sql, userID).Scan(&acc.Deposit, &acc.Withdrawn)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if err != nil {
 		return acc, err
 	}
 	return acc, nil

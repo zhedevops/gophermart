@@ -218,37 +218,6 @@ func (dbs *DBStorage) GetOrdersByUser(userID uint32, operation model.OrderOperat
 	return orders, nil
 }
 
-func (dbs *DBStorage) GetOrdersByStatus(statuses []model.OrderStatus) ([]*model.Order, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), contextTimeout)
-	defer cancel()
-	var orders []*model.Order
-	sql := `SELECT o.id, o.number, o.status
-         FROM orders o    	 
-         WHERE o.status = ANY($1) 
-         ORDER BY o.uploaded_at DESC`
-	rows, err := dbs.db.Query(ctx, sql, statuses)
-	if err != nil {
-		return orders, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var ord model.Order
-		err = rows.Scan(
-			&ord.ID,
-			&ord.Number,
-			&ord.Status,
-		)
-		if err != nil {
-			return orders, err
-		}
-		orders = append(orders, &ord)
-	}
-	if err = rows.Err(); err != nil {
-		return orders, err
-	}
-	return orders, nil
-}
-
 func (dbs *DBStorage) GetWithdrawalsByUser(userID uint32, operation model.OrderOperation) ([]*model.Order, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), contextTimeout)
 	defer cancel()

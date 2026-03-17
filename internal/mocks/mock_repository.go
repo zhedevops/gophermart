@@ -5,7 +5,6 @@
 package mocks
 
 import (
-	context "context"
 	reflect "reflect"
 
 	gomock "github.com/golang/mock/gomock"
@@ -80,21 +79,6 @@ func (mr *MockRepositoryMockRecorder) GetBalance(userID interface{}) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBalance", reflect.TypeOf((*MockRepository)(nil).GetBalance), userID)
 }
 
-// GetOrdersByStatus mocks base method.
-func (m *MockRepository) GetOrdersByStatus(statuses []model.OrderStatus) ([]*model.Order, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetOrdersByStatus", statuses)
-	ret0, _ := ret[0].([]*model.Order)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetOrdersByStatus indicates an expected call of GetOrdersByStatus.
-func (mr *MockRepositoryMockRecorder) GetOrdersByStatus(statuses interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOrdersByStatus", reflect.TypeOf((*MockRepository)(nil).GetOrdersByStatus), statuses)
-}
-
 // GetOrdersByUser mocks base method.
 func (m *MockRepository) GetOrdersByUser(userID uint32, operation model.OrderOperation) ([]*model.Order, error) {
 	m.ctrl.T.Helper()
@@ -123,20 +107,6 @@ func (m *MockRepository) GetWithdrawalsByUser(userID uint32, operation model.Ord
 func (mr *MockRepositoryMockRecorder) GetWithdrawalsByUser(userID, operation interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetWithdrawalsByUser", reflect.TypeOf((*MockRepository)(nil).GetWithdrawalsByUser), userID, operation)
-}
-
-// Ping mocks base method.
-func (m *MockRepository) Ping(ctx context.Context) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Ping", ctx)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Ping indicates an expected call of Ping.
-func (mr *MockRepositoryMockRecorder) Ping(ctx interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ping", reflect.TypeOf((*MockRepository)(nil).Ping), ctx)
 }
 
 // SetOrder mocks base method.

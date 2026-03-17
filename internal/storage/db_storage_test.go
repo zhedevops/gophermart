@@ -179,9 +179,9 @@ func TestIntegration(t *testing.T) {
 	})
 
 	t.Run("get user balance err", func(t *testing.T) {
-		account, err := repo.GetBalance(2)
-		require.Error(t, err)
+		account, err := repo.GetBalance(0)
 		require.Equal(t, account, &model.Account{})
+		require.Error(t, err)
 	})
 
 	t.Run("get orders by user ok", func(t *testing.T) {

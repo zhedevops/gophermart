@@ -89,7 +89,7 @@ func TestService_GetNewUser(t *testing.T) {
 	})
 
 	t.Run("test invalid order format", func(t *testing.T) {
-		srv.hashFunc = func(p string) (string, error) {
+		srv.hashFunc = func(_ string) (string, error) {
 			return "", errors.New("hash failed")
 		}
 		user, err := srv.GetNewUser(login, password)

@@ -40,12 +40,12 @@ func InitPostgres(pool *pgxpool.Pool) error {
 	if env == "dev" {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	db := stdlib.OpenDBFromPool(pool)
 	defer db.Close()
 
-	if err := goose.UpContext(ctx, db, "./migrations"); err != nil {
+	if err := goose.UpContext(ctx, db, "../../migrations"); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 

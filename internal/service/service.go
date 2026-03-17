@@ -21,10 +21,11 @@ import (
 )
 
 type Service struct {
-	repo   repository.Repository
-	cnf    *config.Config
-	tasks  chan model.OrderTask
-	client *http.Client
+	repo     repository.Repository
+	cnf      *config.Config
+	tasks    chan model.OrderTask
+	client   *http.Client
+	hashFunc func(string) (string, error)
 }
 
 var orderNumberRegex = regexp.MustCompile(`^\d+$`)
@@ -35,10 +36,11 @@ func NewService(r repository.Repository, cnf *config.Config) *Service {
 		Timeout: 10 * time.Second,
 	}
 	srv := &Service{
-		repo:   r,
-		cnf:    cnf,
-		tasks:  tasks,
-		client: client,
+		repo:     r,
+		cnf:      cnf,
+		tasks:    tasks,
+		client:   client,
+		hashFunc: HashPassword,
 	}
 	for i := 0; i < 3; i++ {
 		go srv.worker(tasks)
@@ -89,7 +91,7 @@ func (srv *Service) SetWithdraw(user model.User, req model.RequestWithdraw) erro
 
 func (srv *Service) GetNewUser(login string, password string) (model.User, error) {
 	user := model.User{}
-	passHash, err := HashPassword(password)
+	passHash, err := srv.hashFunc(password)
 	if err != nil {
 		return user, err
 	}

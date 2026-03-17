@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -49,5 +50,51 @@ func TestService_SetOrder(t *testing.T) {
 		err := srv.SetOrder(user, orderNum)
 		assert.NotNil(t, err)
 		assert.Equal(t, "data conflict", err.Error())
+	})
+}
+
+func TestService_GetNewUser(t *testing.T) {
+	login := "d51eae65"
+	password := "dlf82a5xunr"
+	passHash := "$2a$10$is1n9tK40PTAR/BPETvAOu3MW9vFYABrUBX5b/o/T7Pj4sdOz4pYS"
+	createdUser := model.User{
+		ID:           1,
+		Login:        login,
+		PasswordHash: passHash,
+	}
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	m := mocks.NewMockRepository(ctrl)
+	cnf := config.GetConfig()
+	m.EXPECT().CreateUser(gomock.Any()).DoAndReturn(func(u model.User) (model.User, error) {
+		assert.Equal(t, login, u.Login)
+		return createdUser, nil
+	})
+	m.EXPECT().CreateUser(gomock.Any()).Return(model.User{}, errors.New("user cannot create"))
+	srv := NewService(m, cnf)
+
+	t.Run("test ok", func(t *testing.T) {
+		user, err := srv.GetNewUser(login, password)
+		assert.Nil(t, err)
+		assert.Equal(t, createdUser.Login, user.Login)
+		err = CheckPassword(user.PasswordHash, password)
+		assert.Nil(t, err)
+	})
+
+	t.Run("test cannot create user", func(t *testing.T) {
+		user, err := srv.GetNewUser(login, password)
+		assert.NotNil(t, err)
+		assert.Equal(t, "user cannot create", err.Error())
+		assert.Equal(t, model.User{}, user)
+	})
+
+	t.Run("test invalid order format", func(t *testing.T) {
+		srv.hashFunc = func(p string) (string, error) {
+			return "", errors.New("hash failed")
+		}
+		user, err := srv.GetNewUser(login, password)
+		assert.NotNil(t, err)
+		assert.Equal(t, "hash failed", err.Error())
+		assert.Equal(t, model.User{}, user)
 	})
 }

@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -102,11 +104,10 @@ func TestRouter(t *testing.T) {
 func TestHandler_PingHandler(t *testing.T) {
 	a := assert.New(t)
 	_ = godotenv.Load("../../.env")
-	dsn, dsnErr := os.LookupEnv("DATABASE_DSN")
+	dsn, _ := os.LookupEnv("DATABASE_DSN")
 	if dsn == "" {
-		t.Skip("dns is required")
+		dsn = "postgres://postgres:postgres@postgres:5432/praktikum"
 	}
-	a.True(dsnErr)
 	cnf := config.GetConfig()
 	// Открываем пул
 	pool, err := database.ConnectDB(dsn)
@@ -358,4 +359,157 @@ func TestHandler_handleCookie(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, string(resBody), "handleCookie_failure")
 	})
+}
+
+func TestHandler_RegisterHandler(t *testing.T) {
+	login := "d51eae65"
+	password := "dlf82a5xunr"
+	passHash := "$2a$10$is1n9tK40PTAR/BPETvAOu3MW9vFYABrUBX5b/o/T7Pj4sdOz4pYS"
+	createdUser := model.User{
+		ID:           1,
+		Login:        login,
+		PasswordHash: passHash,
+	}
+	body := fmt.Sprintf(`{"login":"%s","password":"%s"}`, login, password)
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	m := mocks.NewMockRepository(ctrl)
+	m.EXPECT().CreateUser(gomock.Any()).DoAndReturn(func(u model.User) (model.User, error) {
+		assert.Equal(t, login, u.Login)
+		return createdUser, nil
+	})
+	m.EXPECT().CreateUser(gomock.Any()).Return(model.User{}, errors.New("user cannot create"))
+	cnf := config.GetConfig()
+	srv := service.NewService(m, cnf)
+	h := &Handler{service: srv, Cfg: cnf}
+	var target = "/api/user/register"
+	r := chi.NewRouter()
+	r.Use(middleware.Logger)
+	r.With(middleware.RequireContentType("application/json")).HandleFunc(target, h.RegisterHandler)
+
+	type want struct {
+		code        int
+		response    string
+		err         string
+		contentType string
+	}
+	type args struct {
+		method      string
+		target      string
+		body        string
+		contentType string
+	}
+	tests := []struct {
+		name string
+		args args
+		want want
+	}{
+		{
+			name: "MethodPost result success",
+			args: args{
+				method:      http.MethodPost,
+				target:      target,
+				body:        body,
+				contentType: "application/json",
+			},
+			want: want{
+				code:        http.StatusOK,
+				response:    "",
+				err:         "",
+				contentType: "",
+			},
+		},
+		{
+			name: "unsupported content type",
+			args: args{
+				method:      http.MethodPost,
+				target:      target,
+				body:        body,
+				contentType: "text/plain",
+			},
+			want: want{
+				code:        http.StatusUnsupportedMediaType,
+				response:    "",
+				err:         "unsupported content type",
+				contentType: "text/plain",
+			},
+		},
+		{
+			name: "invalid json",
+			args: args{
+				method:      http.MethodPost,
+				target:      target,
+				body:        `{"login":"d51eae65"`,
+				contentType: "application/json",
+			},
+			want: want{
+				code:        http.StatusBadRequest,
+				response:    "",
+				err:         "cannot decode request JSON body",
+				contentType: "text/plain",
+			},
+		},
+		{
+			name: "empty login",
+			args: args{
+				method:      http.MethodPost,
+				target:      target,
+				body:        `{"login":"","password":"dlf82a5xunr"}`,
+				contentType: "application/json",
+			},
+			want: want{
+				code:        http.StatusBadRequest,
+				response:    "",
+				err:         "login and password required",
+				contentType: "application/json",
+			},
+		},
+		{
+			name: "cannot create user",
+			args: args{
+				method:      http.MethodPost,
+				target:      target,
+				body:        body,
+				contentType: "application/json",
+			},
+			want: want{
+				code:        http.StatusInternalServerError,
+				response:    "",
+				err:         "cannot create user",
+				contentType: "application/json",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := httptest.NewRequest(tt.args.method, tt.args.target, strings.NewReader(tt.args.body))
+			request.Header.Add("Content-Type", tt.args.contentType)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, request)
+
+			res := w.Result()
+			assert.Equal(t, tt.want.code, res.StatusCode)
+
+			defer func() {
+				_ = res.Body.Close()
+			}()
+			resBody, err := io.ReadAll(res.Body)
+			require.NoError(t, err)
+			cookies := res.Cookies()
+			var authCookie *http.Cookie
+			for _, c := range cookies {
+				if c.Name == "Authorization" {
+					authCookie = c
+					break
+				}
+			}
+			if tt.want.err != "" {
+				assert.Contains(t, string(resBody), tt.want.err)
+				assert.Nil(t, authCookie, "Authorization cookie should not be set")
+			} else {
+				assert.NotNil(t, authCookie, "Authorization cookie should be set")
+				assert.NotEmpty(t, authCookie.Value, "Authorization cookie should not be empty")
+			}
+		})
+	}
 }

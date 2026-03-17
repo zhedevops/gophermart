@@ -39,10 +39,6 @@ func (h *Handler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	user, err := h.service.GetNewUser(req.Login, req.Password)
 	if err != nil {
-		if errors.Is(err, model.ErrConflict) {
-			h.setErrorResponseOnConflict(w)
-			return
-		}
 		http.Error(w, "cannot create user", http.StatusInternalServerError)
 		return
 	}

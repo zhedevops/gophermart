@@ -12,6 +12,8 @@ import (
 	"github.com/zhedevops/gophermart/internal/model"
 )
 
+var contextTimeout = 5 * time.Second
+
 type DBStorage struct {
 	db *pgxpool.Pool
 }
@@ -23,7 +25,7 @@ func NewDBStorage(pool *pgxpool.Pool) *DBStorage {
 }
 
 func withTx(ctx context.Context, db *pgxpool.Pool, fn func(ctx context.Context, tx pgx.Tx) error) error {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, contextTimeout)
 	defer cancel()
 	tx, err := db.Begin(ctx)
 	if err != nil {
@@ -133,7 +135,7 @@ func (dbs *DBStorage) SetWithdraw(order *model.Order) error {
 }
 
 func (dbs *DBStorage) GetBalance(userID uint32) (*model.Account, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), contextTimeout)
 	defer cancel()
 	var acc = &model.Account{}
 	sql := `SELECT deposit, withdrawn FROM accounts WHERE user_id = $1 LIMIT 1`
@@ -149,7 +151,7 @@ func (dbs *DBStorage) Ping(ctx context.Context) error {
 }
 
 func (dbs *DBStorage) CreateUser(user model.User) (model.User, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), contextTimeout)
 	defer cancel()
 	tx, err := dbs.db.Begin(ctx)
 	if err != nil {
@@ -174,7 +176,7 @@ func (dbs *DBStorage) CreateUser(user model.User) (model.User, error) {
 }
 
 func (dbs *DBStorage) FindUser(user model.User) (model.User, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), contextTimeout)
 	defer cancel()
 	sql := `SELECT id, password_hash FROM users WHERE login = $1`
 	err := dbs.db.QueryRow(ctx, sql, user.Login).Scan(&user.ID, &user.PasswordHash)
@@ -185,7 +187,7 @@ func (dbs *DBStorage) FindUser(user model.User) (model.User, error) {
 }
 
 func (dbs *DBStorage) GetOrdersByUser(userID uint32, operation model.OrderOperation) ([]*model.Order, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), contextTimeout)
 	defer cancel()
 	var orders []*model.Order
 	var accrual *decimal.Decimal
@@ -221,7 +223,7 @@ func (dbs *DBStorage) GetOrdersByUser(userID uint32, operation model.OrderOperat
 }
 
 func (dbs *DBStorage) GetOrdersByStatus(statuses []model.OrderStatus) ([]*model.Order, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), contextTimeout)
 	defer cancel()
 	var orders []*model.Order
 	sql := `SELECT o.id, o.number, o.status
@@ -252,7 +254,7 @@ func (dbs *DBStorage) GetOrdersByStatus(statuses []model.OrderStatus) ([]*model.
 }
 
 func (dbs *DBStorage) GetWithdrawalsByUser(userID uint32, operation model.OrderOperation) ([]*model.Order, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), contextTimeout)
 	defer cancel()
 	var orders []*model.Order
 	var withdrawal decimal.Decimal

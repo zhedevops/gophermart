@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/golang/mock/gomock"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zhedevops/gophermart/internal/config"
@@ -455,6 +456,567 @@ func TestHandler_RegisterHandler(t *testing.T) {
 			} else {
 				assert.NotNil(t, authCookie, "Authorization cookie should be set")
 				assert.NotEmpty(t, authCookie.Value, "Authorization cookie should not be empty")
+			}
+		})
+	}
+}
+
+func TestHandler_ListOrdersHandler(t *testing.T) {
+	var user = model.User{
+		ID: 1,
+	}
+	orderNum := "4305603"
+	order := &model.Order{
+		Number: orderNum,
+		Status: model.StatusNew,
+		UserID: user.ID,
+	}
+	var orders []*model.Order
+	orders = append(orders, order)
+	var orders2 []*model.Order
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	m := mocks.NewMockRepository(ctrl)
+	cnf := config.GetConfig()
+	m.EXPECT().GetOrdersByUser(user.ID, model.OperationAccrual).Return(orders, nil)
+	m.EXPECT().GetOrdersByUser(user.ID, model.OperationAccrual).Return(orders2, nil)
+	m.EXPECT().GetOrdersByUser(user.ID, model.OperationAccrual).Return(orders2, errors.New("unexpected error"))
+	srv := service.NewService(m, cnf)
+	h := &Handler{service: srv, Cfg: cnf}
+	ac := h.service.GetAuthCookie(user)
+	cookie := &http.Cookie{
+		Name:     "Authorization",
+		Value:    ac,
+		Path:     "/",
+		HttpOnly: true,
+	}
+	var target = "/api/user/orders"
+	response := fmt.Sprintf(`[{"number": "%s", "status": "%s", "uploaded_at":"0001-01-01T00:00:00Z"}]`, orderNum, model.StatusMap[model.StatusNew])
+	r := chi.NewRouter()
+	r.Use(middleware.Logger)
+	r.HandleFunc(target, h.ListOrdersHandler)
+
+	type want struct {
+		code        int
+		response    string
+		err         string
+		contentType string
+	}
+	type args struct {
+		method      string
+		target      string
+		cookie      *http.Cookie
+		contentType string
+	}
+	tests := []struct {
+		name string
+		args args
+		want want
+	}{
+		{
+			name: "MethodGet result success",
+			args: args{
+				method:      http.MethodGet,
+				target:      target,
+				cookie:      cookie,
+				contentType: "text/plain",
+			},
+			want: want{
+				code:        http.StatusOK,
+				response:    response,
+				err:         "",
+				contentType: "application/json",
+			},
+		},
+		{
+			name: "no content",
+			args: args{
+				method:      http.MethodGet,
+				target:      target,
+				cookie:      cookie,
+				contentType: "text/plain",
+			},
+			want: want{
+				code:        http.StatusNoContent,
+				response:    "",
+				err:         "",
+				contentType: "",
+			},
+		},
+		{
+			name: "unexpected error",
+			args: args{
+				method:      http.MethodGet,
+				target:      target,
+				cookie:      cookie,
+				contentType: "text/plain",
+			},
+			want: want{
+				code:        http.StatusInternalServerError,
+				response:    "",
+				err:         "unexpected error",
+				contentType: "text/plain",
+			},
+		},
+		{
+			name: "user not authenticated",
+			args: args{
+				method:      http.MethodGet,
+				target:      target,
+				cookie:      &http.Cookie{Name: "Test", Value: "dlf82a5xunr"},
+				contentType: "text/plain",
+			},
+			want: want{
+				code:        http.StatusUnauthorized,
+				response:    "",
+				err:         "user not authenticated",
+				contentType: "text/plain",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := httptest.NewRequest(tt.args.method, tt.args.target, nil)
+			request.Header.Add("Content-Type", tt.args.contentType)
+			request.AddCookie(tt.args.cookie)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, request)
+
+			res := w.Result()
+			assert.Equal(t, tt.want.code, res.StatusCode)
+
+			defer func() {
+				_ = res.Body.Close()
+			}()
+			resBody, err := io.ReadAll(res.Body)
+			require.NoError(t, err)
+			if tt.want.err != "" {
+				assert.Contains(t, string(resBody), tt.want.err)
+			} else if tt.want.code == http.StatusNoContent {
+				assert.Empty(t, resBody)
+			} else {
+				assert.JSONEq(t, tt.want.response, string(resBody))
+			}
+		})
+	}
+}
+
+func TestHandler_BalanceHandler(t *testing.T) {
+	var user = model.User{
+		ID: 1,
+	}
+	var acc = &model.Account{
+		Deposit:   222,
+		Withdrawn: 333,
+	}
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	m := mocks.NewMockRepository(ctrl)
+	cnf := config.GetConfig()
+	m.EXPECT().GetBalance(user.ID).Return(acc, nil)
+	m.EXPECT().GetBalance(user.ID).Return(&model.Account{}, errors.New("unexpected error"))
+	srv := service.NewService(m, cnf)
+	h := &Handler{service: srv, Cfg: cnf}
+	ac := h.service.GetAuthCookie(user)
+	cookie := &http.Cookie{
+		Name:     "Authorization",
+		Value:    ac,
+		Path:     "/",
+		HttpOnly: true,
+	}
+	var target = "/api/user/balance"
+	r := chi.NewRouter()
+	r.Use(middleware.Logger)
+	r.HandleFunc(target, h.BalanceHandler)
+
+	type want struct {
+		code        int
+		response    string
+		err         string
+		contentType string
+	}
+	type args struct {
+		method      string
+		target      string
+		cookie      *http.Cookie
+		contentType string
+	}
+	tests := []struct {
+		name string
+		args args
+		want want
+	}{
+		{
+			name: "MethodGet result success",
+			args: args{
+				method:      http.MethodGet,
+				target:      target,
+				cookie:      cookie,
+				contentType: "text/plain",
+			},
+			want: want{
+				code:        http.StatusOK,
+				response:    `{"current": 222, "withdrawn": 333}`,
+				err:         "",
+				contentType: "application/json",
+			},
+		},
+		{
+			name: "unexpected error",
+			args: args{
+				method:      http.MethodGet,
+				target:      target,
+				cookie:      cookie,
+				contentType: "text/plain",
+			},
+			want: want{
+				code:        http.StatusInternalServerError,
+				response:    "",
+				err:         "unexpected error",
+				contentType: "text/plain",
+			},
+		},
+		{
+			name: "user not authenticated",
+			args: args{
+				method:      http.MethodGet,
+				target:      target,
+				cookie:      &http.Cookie{Name: "Test", Value: "dlf82a5xunr"},
+				contentType: "text/plain",
+			},
+			want: want{
+				code:        http.StatusUnauthorized,
+				response:    "",
+				err:         "user not authenticated",
+				contentType: "text/plain",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := httptest.NewRequest(tt.args.method, tt.args.target, nil)
+			request.Header.Add("Content-Type", tt.args.contentType)
+			request.AddCookie(tt.args.cookie)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, request)
+
+			res := w.Result()
+			assert.Equal(t, tt.want.code, res.StatusCode)
+
+			defer func() {
+				_ = res.Body.Close()
+			}()
+			resBody, err := io.ReadAll(res.Body)
+			require.NoError(t, err)
+			if tt.want.err != "" {
+				assert.Contains(t, string(resBody), tt.want.err)
+			} else if tt.want.contentType == "" {
+				assert.Empty(t, resBody)
+			} else {
+				assert.JSONEq(t, tt.want.response, string(resBody))
+			}
+		})
+	}
+}
+
+func TestHandler_BalanceWithdrawHandler(t *testing.T) {
+	var user = model.User{
+		ID: 1,
+	}
+	orderNum := "4305603"
+	var req = model.RequestWithdraw{
+		Order: orderNum,
+		Sum:   decimal.NewFromFloat(111),
+	}
+	var order = &model.Order{
+		Number:   req.Order,
+		UserID:   user.ID,
+		Withdraw: req.Sum,
+	}
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	m := mocks.NewMockRepository(ctrl)
+	cnf := config.GetConfig()
+	m.EXPECT().SetWithdraw(order).Return(nil)
+	m.EXPECT().SetWithdraw(order).Return(errors.New("unexpected error"))
+	m.EXPECT().SetWithdraw(order).Return(model.ErrInsufficientFunds)
+	m.EXPECT().SetWithdraw(order).Return(model.ErrWrongOrderNumber)
+	srv := service.NewService(m, cnf)
+	h := &Handler{service: srv, Cfg: cnf}
+	ac := h.service.GetAuthCookie(user)
+	cookie := &http.Cookie{
+		Name:     "Authorization",
+		Value:    ac,
+		Path:     "/",
+		HttpOnly: true,
+	}
+	var target = "/api/user/balance/withdraw"
+	var body = `{"order": "4305603", "sum": 111}`
+	r := chi.NewRouter()
+	r.Use(middleware.Logger)
+	r.With(middleware.RequireContentType("application/json")).HandleFunc(target, h.BalanceWithdrawHandler)
+
+	type want struct {
+		code        int
+		response    string
+		err         string
+		contentType string
+	}
+	type args struct {
+		method      string
+		target      string
+		body        string
+		cookie      *http.Cookie
+		contentType string
+	}
+	tests := []struct {
+		name string
+		args args
+		want want
+	}{
+		{
+			name: "MethodGet result success",
+			args: args{
+				method:      http.MethodPost,
+				target:      target,
+				body:        body,
+				cookie:      cookie,
+				contentType: "application/json",
+			},
+			want: want{
+				code:        http.StatusOK,
+				response:    "",
+				err:         "",
+				contentType: "",
+			},
+		},
+		{
+			name: "unexpected error",
+			args: args{
+				method:      http.MethodPost,
+				target:      target,
+				body:        body,
+				cookie:      cookie,
+				contentType: "application/json",
+			},
+			want: want{
+				code:        http.StatusInternalServerError,
+				response:    "",
+				err:         "unexpected error",
+				contentType: "text/plain",
+			},
+		},
+		{
+			name: "user not authenticated",
+			args: args{
+				method:      http.MethodPost,
+				target:      target,
+				body:        body,
+				cookie:      &http.Cookie{Name: "Test", Value: "dlf82a5xunr"},
+				contentType: "application/json",
+			},
+			want: want{
+				code:        http.StatusUnauthorized,
+				response:    "",
+				err:         "user not authenticated",
+				contentType: "text/plain",
+			},
+		},
+		{
+			name: "insufficient funds",
+			args: args{
+				method:      http.MethodPost,
+				target:      target,
+				body:        body,
+				cookie:      cookie,
+				contentType: "application/json",
+			},
+			want: want{
+				code:        http.StatusPaymentRequired,
+				response:    "",
+				err:         "insufficient funds",
+				contentType: "text/plain",
+			},
+		},
+		{
+			name: "invalid order format",
+			args: args{
+				method:      http.MethodPost,
+				target:      target,
+				body:        body,
+				cookie:      cookie,
+				contentType: "application/json",
+			},
+			want: want{
+				code:        http.StatusUnprocessableEntity,
+				response:    "",
+				err:         "invalid order format",
+				contentType: "text/plain",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := httptest.NewRequest(tt.args.method, tt.args.target, strings.NewReader(tt.args.body))
+			request.Header.Add("Content-Type", tt.args.contentType)
+			request.AddCookie(tt.args.cookie)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, request)
+
+			res := w.Result()
+			assert.Equal(t, tt.want.code, res.StatusCode)
+
+			defer func() {
+				_ = res.Body.Close()
+			}()
+			resBody, err := io.ReadAll(res.Body)
+			require.NoError(t, err)
+			if tt.want.err != "" {
+				assert.Contains(t, string(resBody), tt.want.err)
+			} else if tt.want.contentType == "" {
+				assert.Empty(t, resBody)
+			} else {
+				assert.JSONEq(t, tt.want.response, string(resBody))
+			}
+		})
+	}
+}
+
+func TestHandler_WithdrawalsHandler(t *testing.T) {
+	var user = model.User{
+		ID: 1,
+	}
+	orderNum := "4305603"
+	order := &model.Order{
+		Number:   orderNum,
+		Status:   model.StatusNew,
+		UserID:   user.ID,
+		Withdraw: decimal.NewFromFloat(333),
+	}
+	var orders []*model.Order
+	orders = append(orders, order)
+	var orders2 []*model.Order
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	m := mocks.NewMockRepository(ctrl)
+	cnf := config.GetConfig()
+	m.EXPECT().GetWithdrawalsByUser(user.ID, model.OperationWithdrawal).Return(orders, nil)
+	m.EXPECT().GetWithdrawalsByUser(user.ID, model.OperationWithdrawal).Return(orders2, nil)
+	m.EXPECT().GetWithdrawalsByUser(user.ID, model.OperationWithdrawal).Return(orders2, errors.New("unexpected error"))
+	srv := service.NewService(m, cnf)
+	h := &Handler{service: srv, Cfg: cnf}
+	ac := h.service.GetAuthCookie(user)
+	cookie := &http.Cookie{
+		Name:     "Authorization",
+		Value:    ac,
+		Path:     "/",
+		HttpOnly: true,
+	}
+	var target = "/api/user/withdrawals"
+	r := chi.NewRouter()
+	r.Use(middleware.Logger)
+	r.HandleFunc(target, h.WithdrawalsHandler)
+
+	type want struct {
+		code        int
+		response    string
+		err         string
+		contentType string
+	}
+	type args struct {
+		method      string
+		target      string
+		cookie      *http.Cookie
+		contentType string
+	}
+	tests := []struct {
+		name string
+		args args
+		want want
+	}{
+		{
+			name: "MethodGet result success",
+			args: args{
+				method:      http.MethodGet,
+				target:      target,
+				cookie:      cookie,
+				contentType: "text/plain",
+			},
+			want: want{
+				code:        http.StatusOK,
+				response:    `[{"order": "4305603", "sum": 333, "processed_at": "0001-01-01T00:00:00Z"}]`,
+				err:         "",
+				contentType: "application/json",
+			},
+		},
+		{
+			name: "no content",
+			args: args{
+				method:      http.MethodGet,
+				target:      target,
+				cookie:      cookie,
+				contentType: "text/plain",
+			},
+			want: want{
+				code:        http.StatusNoContent,
+				response:    "",
+				err:         "",
+				contentType: "",
+			},
+		},
+		{
+			name: "unexpected error",
+			args: args{
+				method:      http.MethodGet,
+				target:      target,
+				cookie:      cookie,
+				contentType: "text/plain",
+			},
+			want: want{
+				code:        http.StatusInternalServerError,
+				response:    "",
+				err:         "unexpected error",
+				contentType: "text/plain",
+			},
+		},
+		{
+			name: "user not authenticated",
+			args: args{
+				method:      http.MethodGet,
+				target:      target,
+				cookie:      &http.Cookie{Name: "Test", Value: "dlf82a5xunr"},
+				contentType: "text/plain",
+			},
+			want: want{
+				code:        http.StatusUnauthorized,
+				response:    "",
+				err:         "user not authenticated",
+				contentType: "text/plain",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := httptest.NewRequest(tt.args.method, tt.args.target, nil)
+			request.Header.Add("Content-Type", tt.args.contentType)
+			request.AddCookie(tt.args.cookie)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, request)
+
+			res := w.Result()
+			assert.Equal(t, tt.want.code, res.StatusCode)
+
+			defer func() {
+				_ = res.Body.Close()
+			}()
+			resBody, err := io.ReadAll(res.Body)
+			require.NoError(t, err)
+			if tt.want.err != "" {
+				assert.Contains(t, string(resBody), tt.want.err)
+			} else if tt.want.code == http.StatusNoContent {
+				assert.Empty(t, resBody)
+			} else {
+				assert.JSONEq(t, tt.want.response, string(resBody))
 			}
 		})
 	}

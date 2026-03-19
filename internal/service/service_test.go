@@ -168,7 +168,6 @@ func TestService_AuthentificateUser(t *testing.T) {
 }
 
 func TestService_CheckAuthCookie(t *testing.T) {
-
 	cnf := config.GetConfig()
 	srv := NewService(nil, cnf)
 	var u = model.User{
@@ -308,7 +307,7 @@ func TestService_getAccrual(t *testing.T) {
 	srv.cnf.AccrualAddr.ServerAddress = ts.URL
 
 	t.Run("test ok", func(t *testing.T) {
-		setHandler(func(w http.ResponseWriter, r *http.Request) {
+		setHandler(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(200)
 			_ = json.NewEncoder(w).Encode(model.ResponseAccrualService{
 				Order:   "123",
@@ -324,7 +323,7 @@ func TestService_getAccrual(t *testing.T) {
 	})
 
 	t.Run("test too many requests", func(t *testing.T) {
-		setHandler(func(w http.ResponseWriter, r *http.Request) {
+		setHandler(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Retry-After", "10")
 			w.WriteHeader(http.StatusTooManyRequests)
 		})
@@ -336,7 +335,7 @@ func TestService_getAccrual(t *testing.T) {
 	})
 
 	t.Run("test no contents", func(t *testing.T) {
-		setHandler(func(w http.ResponseWriter, r *http.Request) {
+		setHandler(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		})
 
@@ -346,9 +345,9 @@ func TestService_getAccrual(t *testing.T) {
 	})
 
 	t.Run("test invalid json", func(t *testing.T) {
-		setHandler(func(w http.ResponseWriter, r *http.Request) {
+		setHandler(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("invalid json"))
+			_, _ = w.Write([]byte("invalid json"))
 		})
 
 		_, _, err := srv.getAccrual("123")

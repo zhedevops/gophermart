@@ -63,6 +63,64 @@ func TestService_SetOrder(t *testing.T) {
 	})
 }
 
+func TestService_SetWithdraw(t *testing.T) {
+	var user = model.User{
+		ID: 1,
+	}
+	orderNum := "4305603"
+	var req = model.RequestWithdraw{
+		Order: orderNum,
+		Sum:   decimal.NewFromFloat(111),
+	}
+	var order = &model.Order{
+		Number:   req.Order,
+		UserID:   user.ID,
+		Withdraw: req.Sum,
+	}
+	var reqZero = model.RequestWithdraw{
+		Order: orderNum,
+		Sum:   decimal.NewFromFloat(0),
+	}
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	m := mocks.NewMockRepository(ctrl)
+	cnf := config.GetConfig()
+	m.EXPECT().SetWithdraw(order).Return(nil)
+	m.EXPECT().SetWithdraw(order).Return(errors.New("unexpected error"))
+	m.EXPECT().SetWithdraw(order).Return(model.ErrInsufficientFunds)
+	m.EXPECT().SetWithdraw(order).Return(model.ErrWrongOrderNumber)
+	srv := NewService(m, cnf)
+
+	t.Run("test ok", func(t *testing.T) {
+		err := srv.SetWithdraw(user, req)
+		assert.Nil(t, err)
+	})
+
+	t.Run("test invalid sum", func(t *testing.T) {
+		err := srv.SetWithdraw(user, reqZero)
+		assert.NotNil(t, err)
+		assert.Equal(t, "sum must be greater than 0", err.Error())
+	})
+
+	t.Run("test unexpected error", func(t *testing.T) {
+		err := srv.SetWithdraw(user, req)
+		assert.NotNil(t, err)
+		assert.Equal(t, "unexpected error", err.Error())
+	})
+
+	t.Run("test insufficient funds", func(t *testing.T) {
+		err := srv.SetWithdraw(user, req)
+		assert.NotNil(t, err)
+		assert.Equal(t, "insufficient funds", err.Error())
+	})
+
+	t.Run("test invalid order format", func(t *testing.T) {
+		err := srv.SetWithdraw(user, req)
+		assert.NotNil(t, err)
+		assert.Equal(t, "invalid order format", err.Error())
+	})
+}
+
 func TestService_GetNewUser(t *testing.T) {
 	login := "d51eae65"
 	password := "dlf82a5xunr"

@@ -151,7 +151,10 @@ func (srv *Service) GetAuthCookie(user model.User) string {
 		UID: user.ID,
 		Exp: time.Now().Add(time.Hour).Unix(),
 	}
-	userData, _ := json.Marshal(userJWT)
+	userData, err := json.Marshal(userJWT)
+	if err != nil {
+		return ""
+	}
 	h := hmac.New(sha256.New, srv.cnf.Secret)
 	h.Write(userData)
 	sign := h.Sum(nil)

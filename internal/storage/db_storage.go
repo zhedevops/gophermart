@@ -176,8 +176,11 @@ func (dbs *DBStorage) FindUser(user model.User) (model.User, error) {
 	defer cancel()
 	sql := `SELECT id, password_hash FROM users WHERE login = $1`
 	err := dbs.db.QueryRow(ctx, sql, user.Login).Scan(&user.ID, &user.PasswordHash)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return user, model.ErrUserNotFound
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return user, model.ErrUserNotFound
+		}
+		return user, err
 	}
 	return user, nil
 }

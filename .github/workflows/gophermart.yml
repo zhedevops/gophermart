@@ -20,6 +20,8 @@ jobs:
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: praktikum
+          DATABASE_DSN: postgres://postgres:postgres@postgres:5432/praktikum?sslmode=disable
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
         options: >-
           --health-cmd pg_isready
           --health-interval 5s
@@ -62,3 +64,21 @@ jobs:
             -accrual-host=localhost \
             -accrual-port=$(random unused-port) \
             -accrual-database-uri="postgresql://postgres:postgres@postgres/praktikum?sslmode=disable"
+
+      - name: Run tests with coverage
+        run: |
+          go test -coverpkg=./internal/config,./internal/database,./internal/logger,./internal/middleware,./internal/router,./internal/handler,./internal/service,./internal/storage -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out | tee coverage.txt
+          go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.out
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.out

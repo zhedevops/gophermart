@@ -4,14 +4,17 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/golang/mock/gomock"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/zhedevops/gophermart/internal/config"
 	"github.com/zhedevops/gophermart/internal/mocks"
@@ -165,18 +168,19 @@ func TestService_AuthentificateUser(t *testing.T) {
 }
 
 func TestService_CheckAuthCookie(t *testing.T) {
+
+	cnf := config.GetConfig()
+	srv := NewService(nil, cnf)
 	var u = model.User{
 		ID: 1,
 	}
-	var ac = "eyJ1aWQiOjEsImV4cCI6MTc3Mzk0NTc3M30=.KCsJqyE3XZlhfX6JwnPyK6JdwnqZZ2Zdbe/uADE2Q4s="
+	cookieStr := srv.GetAuthCookie(u)
 	cookie := &http.Cookie{
 		Name:     "Test",
-		Value:    ac,
+		Value:    cookieStr,
 		Path:     "/",
 		HttpOnly: true,
 	}
-	cnf := config.GetConfig()
-	srv := NewService(nil, cnf)
 
 	t.Run("test ok", func(t *testing.T) {
 		user, err := srv.CheckAuthCookie(cookie)
@@ -289,4 +293,66 @@ func TestService_GetAuthCookie(t *testing.T) {
 	resUser, err := srv.CheckAuthCookie(cookie)
 	assert.NoError(t, err)
 	assert.Equal(t, user.ID, resUser.ID)
+}
+
+func TestService_getAccrual(t *testing.T) {
+	var accrual = 999.02
+	acc := decimal.NewFromFloat(accrual)
+	ts := httptest.NewServer(nil)
+	defer ts.Close()
+	setHandler := func(h http.HandlerFunc) {
+		ts.Config.Handler = h
+	}
+	cnf := config.GetConfig()
+	srv := NewService(nil, cnf)
+	srv.cnf.AccrualAddr.ServerAddress = ts.URL
+
+	t.Run("test ok", func(t *testing.T) {
+		setHandler(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(200)
+			_ = json.NewEncoder(w).Encode(model.ResponseAccrualService{
+				Order:   "123",
+				Status:  "PROCESSED",
+				Accrual: &acc,
+			})
+		})
+
+		resp, retry, err := srv.getAccrual("123")
+		assert.NoError(t, err)
+		assert.Equal(t, time.Duration(0), retry)
+		assert.Equal(t, "123", resp.Order)
+	})
+
+	t.Run("test too many requests", func(t *testing.T) {
+		setHandler(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Retry-After", "10")
+			w.WriteHeader(http.StatusTooManyRequests)
+		})
+
+		_, retry, err := srv.getAccrual("123")
+		assert.Error(t, err)
+		assert.ErrorIs(t, err, model.ErrToManyRequests)
+		assert.Equal(t, 10*time.Second, retry)
+	})
+
+	t.Run("test no contents", func(t *testing.T) {
+		setHandler(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		})
+
+		_, _, err := srv.getAccrual("123")
+		assert.Error(t, err)
+		assert.ErrorIs(t, err, model.ErrOrderNotRegistered)
+	})
+
+	t.Run("test invalid json", func(t *testing.T) {
+		setHandler(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("invalid json"))
+		})
+
+		_, _, err := srv.getAccrual("123")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid character")
+	})
 }
